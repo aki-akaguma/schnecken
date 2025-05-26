@@ -1,0 +1,11 @@
+
++ use BerkeleyDB
++ command pattern:
+  + command -h
+  + command -d db_path get key
+  + command -d db_path set key value
+  + command -d db_path delete key
+  + command -d db_path rename oldkey newkey
+  + command -d db_path dump
+  + command -d db_path store
+  + command -d db_path count
