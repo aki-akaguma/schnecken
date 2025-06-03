@@ -1,11 +1,12 @@
 #!/usr/bin/env perl
 
-use v5.28;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
+use 5.028;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
 use warnings;
 use BerkeleyDB;
 use Getopt::Long;
 use File::Path qw/mkpath/;
 use File::Basename;
+use Try::Tiny;
 
 # --- Configuration ---
 my $VERSION = "0.1.0";    # Define the version number here
@@ -28,8 +29,8 @@ my %commands = (
 
 sub podman {
     my (%h) = @_;
-    ## no critic
-    eval "use Pod::Usage 'pod2usage';";
+    ## no critic (BuiltinFunctions::ProhibitStringyEval)
+    my $_r = eval "use Pod::Usage 'pod2usage';";
     ## use critic
     pod2usage(%h);
     return;
@@ -60,18 +61,19 @@ sub open_db {
             -MaxLockers => 10,
             -MaxLocks   => 10,
             -MaxObjects => 10,
-            -LockDetect => DB_LOCK_DEFAULT,   # Default: abort one conflicting locker
+            -LockDetect => DB_LOCK_DEFAULT,    # Default: abort one conflicting locker
             -Mode       => 0o644,
         ) or die "Cannot create DB environment: $env_home [$!] $BerkeleyDB::Error\n";
     }
     my $txn = $env->txn_begin();
-    my $db = BerkeleyDB::Hash->new(
-      -Filename => $path,
-      -Flags    => $flags,
-      -Env      => $env,
-      -Txn      => $txn,
-      -Mode     => 0o644) or
-        die "Failed to open database: $path [$!] $BerkeleyDB::Error\n";
+    my $db  = BerkeleyDB::Hash->new(
+        -Filename => $path,
+        -Flags    => $flags,
+        -Env      => $env,
+        -Txn      => $txn,
+        -Mode     => 0o644
+    ) or die "Failed to open database: $path [$!] $BerkeleyDB::Error\n";
+
     #$db->Txn($txn);
     return ($db, $txn);
 }
@@ -87,7 +89,7 @@ sub cmd_get {
     }
     my $status = undef;
     my ($db, $txn) = open_db($db_path, DB_RDONLY);
-    eval {
+    try {
         my $value = '';
         $status = $db->db_get($key, $value);
         if ($status == 0) {
@@ -97,11 +99,11 @@ sub cmd_get {
             print "$key: (not found)\n";
         }
         $txn->txn_abort();
-    };
-    if ($@) {
-        warn "Transaction aborted due to error: $@";
-        $txn->txn_abort() if $txn;
     }
+    catch {
+        $txn->txn_abort() if $txn;
+        die "Transaction aborted due to error: $_\n";
+    };
     return;
 }
 
@@ -114,17 +116,17 @@ sub cmd_set {
     }
     my $status = undef;
     my ($db, $txn) = open_db($db_path, DB_CREATE);
-    eval {
+    try {
         $status = $db->db_put($key, $value, 0);
         if ($status != 0) {
-            warn "db_put($key, $value): $status";
+            warn "db_put($key, $value): $status\n";
         }
         $txn->txn_commit();
-    };
-    if ($@) {
-        warn "Transaction aborted due to error: $@";
-        $txn->txn_abort() if $txn;
     }
+    catch {
+        $txn->txn_abort() if $txn;
+        die "Transaction aborted due to error: $_\n";
+    };
     print "Set: $key => $value\n";
     return;
 }
@@ -138,12 +140,12 @@ sub cmd_delete {
     }
     my $status = undef;
     my ($db, $txn) = open_db($db_path, 0);
-    eval {
+    try {
         $status = $db->db_exists($key);
         if ($status == 0) {
             $status = $db->db_del($key);
             if ($status != 0) {
-                warn "db_del($key): $status";
+                warn "db_del($key): $status\n";
             }
             print "Deleted: $key\n";
         }
@@ -151,11 +153,11 @@ sub cmd_delete {
             print "$key: (not found, could not delete)\n";
         }
         $txn->txn_commit();
-    };
-    if ($@) {
-        warn "Transaction aborted due to error: $@";
-        $txn->txn_abort() if $txn;
     }
+    catch {
+        $txn->txn_abort() if $txn;
+        die "Transaction aborted due to error: $_\n";
+    };
     return;
 }
 
@@ -168,7 +170,7 @@ sub cmd_rename {
     }
     my $status = undef;
     my ($db, $txn) = open_db($db_path, 0);
-    eval {
+    try {
         $status = $db->db_exists($oldkey);
         if ($status == 0) {
             $status = $db->db_exists($newkey);
@@ -176,9 +178,9 @@ sub cmd_rename {
                 my $val = '';
                 $status = $db->db_get($newkey, $val);
                 if ($status != 0) {
-                    warn "db_get($newkey, $val): $status";
+                    warn "db_get($newkey, $val): $status\n";
                 }
-                die "Already exists: $newkey => $val";
+                die "Already exists: $newkey => $val\n";
             }
             my $oldval = '';
             $status = $db->db_get($oldkey, $oldval);
@@ -191,11 +193,11 @@ sub cmd_rename {
             print "$oldkey: (not found, could not rename)\n";
             $txn->txn_abort();
         }
-    };
-    if ($@) {
-        warn "Transaction aborted due to error: $@";
-        $txn->txn_abort() if $txn;
     }
+    catch {
+        $txn->txn_abort() if $txn;
+        die "Transaction aborted due to error: $_\n";
+    };
     return;
 }
 
@@ -203,10 +205,10 @@ sub cmd_rename {
 sub cmd_dump {
     my $status = undef;
     my ($db, $txn) = open_db($db_path, DB_RDONLY);
-    eval {
+    try {
         my $cursor = $db->db_cursor();
         while (1) {
-            my $key = '';
+            my $key   = '';
             my $value = '';
             $status = $cursor->c_get($key, $value, DB_NEXT);
             if ($status != 0) {
@@ -215,11 +217,11 @@ sub cmd_dump {
             print "$key\t$value\n";
         }
         $status = $cursor->c_close();
-    };
-    if ($@) {
-        warn "Transaction aborted due to error: $@";
-        $txn->txn_abort() if $txn;
     }
+    catch {
+        $txn->txn_abort() if $txn;
+        die "Transaction aborted due to error: $_\n";
+    };
     return;
 }
 
@@ -232,7 +234,7 @@ sub cmd_restore {
     }
     my $status = undef;
     my ($db, $txn) = open_db($db_path, DB_CREATE);
-    eval {
+    try {
         my $count = 0;
         print "Restoring from '$file_path' to '$db_path'...\n";
         do {
@@ -243,11 +245,11 @@ sub cmd_restore {
             close $fh;
         };
         print "Restore complete. $count entries restored.\n";
-    };
-    if ($@) {
-        warn "Transaction aborted due to error: $@";
-        $txn->txn_abort() if $txn;
     }
+    catch {
+        $txn->txn_abort() if $txn;
+        die "Transaction aborted due to error: $_\n";
+    };
     return;
 }
 
@@ -265,12 +267,12 @@ sub _cmd_restore_proc1 {
         if (defined $key && defined $value) {
             my $status = $db->db_put($key, $value);
             if ($status != 0) {
-                warn "db_put($key, $value): $status";
+                warn "db_put($key, $value): $status\n";
             }
             $count++;
         }
         else {
-            warn "Skipping malformed line: '$line'";
+            warn "Skipping malformed line: '$line'\n";
         }
     }
     return $count;
@@ -279,21 +281,21 @@ sub _cmd_restore_proc1 {
 # count command
 sub cmd_count {
     my ($db, $txn) = open_db($db_path, DB_RDONLY);
-    eval {
-        my $count = 0;
+    try {
+        my $count  = 0;
         my $cursor = $db->db_cursor();
-        my $key = '';
-        my $value = '';
+        my $key    = '';
+        my $value  = '';
         while ($cursor->c_get($key, $value, DB_NEXT) == 0) {
             $count++;
         }
         print "Number of elements: $count\n";
         $txn->txn_abort();
-    };
-    if ($@) {
-        warn "Transaction aborted due to error: $@";
-        $txn->txn_abort() if $txn;
     }
+    catch {
+        $txn->txn_abort() if $txn;
+        die "Transaction aborted due to error: $_\n";
+    };
     return;
 }
 
@@ -308,7 +310,7 @@ MAIN: {
     GetOptions(
         'help|h'    => \$help,
         'man'       => \$man,
-        'version|v' => \$version,       # Add version option
+        'version|v' => \$version,        # Add version option
         'e=s'       => \$opt_env_path,
         'd=s'       => \$opt_db_path,
     ) or podman(-exitval => 2);
@@ -332,32 +334,35 @@ MAIN: {
 
     # -d option is mandatory unless -h, --man, or -v are used
     unless (defined $opt_db_path) {
-        warn "Error: Database path (-d option) is not specified.";
+        warn "Error: Database path (-d option) is not specified.\n";
         podman(-exitval => 1);
     }
     unless (defined $env_home) {
         $env_home = dirname($opt_db_path);
-        $db_path = basename($opt_db_path);
-    } else {
+        $db_path  = basename($opt_db_path);
+    }
+    else {
         $db_path = $opt_db_path;
     }
 
     my $command = shift @ARGV;
     unless (defined $command) {
-        warn "Error: Command is not specified.";
+        warn "Error: Command is not specified.\n";
         podman(-exitval => 1);
     }
 
     my $command_func = $commands{$command};
     unless (defined $command_func) {
-        warn "Error: Unknown command '$command'.";
+        warn "Error: Unknown command '$command'.\n";
         podman(-exitval => 1);
     }
 
-    eval { $command_func->(\@ARGV); };
-    if ($@) {
-        die "An error occurred during command execution: $@";
+    try {
+        $command_func->(\@ARGV);
     }
+    catch {
+        croak("An error occurred during command execution: $_");
+    };
 }
 
 __END__

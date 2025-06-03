@@ -2,10 +2,12 @@
 """ berkeley db manipulation tool """
 import argparse
 import os
+import io
 import sys
 import tempfile
 import shutil
 import atexit
+import fcntl
 from typing import Optional
 
 import bsddb3 as bsddb
@@ -22,8 +24,20 @@ class BDBTool:
 
     def __init__(self, db_file: str, temp_db_dir: Optional[str]):
         self.db_file = db_file
+        self.flock_path = f"{db_file}.flock"
         self.db: Optional[bsddb.db.DB] = None
+        self.flock: Optional[io.TextIOBase] = None
         self._temp_dir_to_clean = temp_db_dir
+
+        try:
+            flock = open(self.flock_path, mode="w", encoding="utf-8")
+        except OSError as e:
+            sys.stderr.write(
+                f"Error: Could not open flock file '{self.flock_path}': {e}\n")
+            sys.exit(1)  # Exit immediately if flock cannot be opened
+
+        fcntl.flock(flock.fileno(), fcntl.LOCK_EX)
+        self.flock = flock
 
         try:
             # 'c' mode creates the database if it doesn't exist
@@ -55,6 +69,15 @@ class BDBTool:
                     f"Warning: Error closing database '{self.db_file}': {e}\n")
             finally:
                 self.db = None  # Ensure db reference is cleared
+
+        if self.flock:
+            try:
+                self.flock.close()
+            except OSError as e:
+                sys.stderr.write(
+                    f"Warning: Error closing flock file '{self.flock_path}': {e}\n")
+            finally:
+                self.flock = None
 
         # If a temporary directory was created for the database, clean it up
         if self._temp_dir_to_clean and os.path.exists(self._temp_dir_to_clean):

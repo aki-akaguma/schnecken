@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" test for bdb-tool.py """
+""" test for bdb-tool-flock.py """
 import unittest
 import subprocess
 import os
@@ -8,11 +8,11 @@ import shutil
 
 BASE_DIR = os.path.dirname(__file__)
 # Define the path to your bdb-tool.py script
-BDB_TOOL_SCRIPT = f'{BASE_DIR}/../bin/bdb-tool.py'
+BDB_TOOL_SCRIPT = f'{BASE_DIR}/../bin/bdb-tool-flock.py'
 
 
 class TestBDBTool(unittest.TestCase):
-    """ test for bdb-tool.py """
+    """ test for bdb-tool-flock.py """
 
     def setUp(self):
         """Set up a temporary directory for each test."""

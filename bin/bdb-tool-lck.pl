@@ -1,11 +1,12 @@
 #!/usr/bin/env perl
 
-use v5.28;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
+use 5.028;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
 use warnings;
 use BerkeleyDB;
 use Getopt::Long;
 use File::Path qw/mkpath/;
 use File::Basename;
+use Try::Tiny;
 
 # --- Configuration ---
 my $VERSION = "0.1.0";    # Define the version number here
@@ -28,8 +29,8 @@ my %commands = (
 
 sub podman {
     my (%h) = @_;
-    ## no critic
-    eval "use Pod::Usage 'pod2usage';";
+    ## no critic (BuiltinFunctions::ProhibitStringyEval)
+    my $_r = eval "use Pod::Usage 'pod2usage';";
     ## use critic
     pod2usage(%h);
     return;
@@ -56,21 +57,20 @@ sub open_db {
         }
         $env = BerkeleyDB::Env->new(
             -Home       => $env_home,
-            #-Flags      => DB_CREATE | DB_INIT_MPOOL | DB_INIT_LOCK | DB_INIT_LOG | DB_INIT_TXN,
             -Flags      => DB_CREATE | DB_INIT_MPOOL | DB_INIT_CDB,
             -MaxLockers => 10,
             -MaxLocks   => 10,
             -MaxObjects => 10,
-            -LockDetect => DB_LOCK_DEFAULT,   # Default: abort one conflicting locker
+            -LockDetect => DB_LOCK_DEFAULT,    # Default: abort one conflicting locker
             -Mode       => 0o644,
         ) or die "Cannot create DB environment: $env_home [$!] $BerkeleyDB::Error\n";
     }
     my $db = BerkeleyDB::Hash->new(
-      -Filename => $path,
-      -Flags    => $flags,
-      -Env      => $env,
-      -Mode     => 0o644) or
-        die "Failed to open database: $path [$!] $BerkeleyDB::Error\n";
+        -Filename => $path,
+        -Flags    => $flags,
+        -Env      => $env,
+        -Mode     => 0o644
+    ) or die "Failed to open database: $path [$!] $BerkeleyDB::Error\n";
     return $db;
 }
 
@@ -84,8 +84,8 @@ sub cmd_get {
         die "The 'get' command requires a key.\n";
     }
     my $status = undef;
-    my $db = open_db($db_path, DB_RDONLY);
-    my $value = '';
+    my $db     = open_db($db_path, DB_RDONLY);
+    my $value  = '';
     $status = $db->db_get($key, $value);
     if ($status == 0) {
         print "$key: $value\n";
@@ -104,14 +104,16 @@ sub cmd_set {
         die "The 'set' command requires a key and a value.\n";
     }
     my $status = undef;
-    my $db = open_db($db_path, DB_CREATE);
-    my $lock = $db->cds_lock();
+    my $db     = open_db($db_path, DB_CREATE);
+    my $lock   = $db->cds_lock();
+
     #$status = $db->status(); print "AAA: $status\n";
     $status = $db->db_put($key, $value);
     if ($status != 0) {
         warn "db_put($key, $value): $status\n";
     }
     $lock->cds_unlock();
+
     #$status = $db->status(); print "BBB: $status\n";
     print "Set: $key => $value\n";
     return;
@@ -125,8 +127,8 @@ sub cmd_delete {
         die "The 'delete' command requires a key.\n";
     }
     my $status = undef;
-    my $db = open_db($db_path, 0);
-    my $lock = $db->cds_lock();
+    my $db     = open_db($db_path, 0);
+    my $lock   = $db->cds_lock();
     $status = $db->db_exists($key);
     if ($status == 0) {
         $status = $db->db_del($key);
@@ -147,8 +149,8 @@ sub cmd_rename {
         die "The 'rename' command requires an old key and a new key.\n";
     }
     my $status = undef;
-    my $db = open_db($db_path, 0);
-    my $lock = $db->cds_lock();
+    my $db     = open_db($db_path, 0);
+    my $lock   = $db->cds_lock();
     $status = $db->db_exists($oldkey);
     if ($status == 0) {
         $status = $db->db_exists($newkey);
@@ -173,10 +175,10 @@ sub cmd_rename {
 # dump command (outputs in key\tvalue format for easier parsing by restore)
 sub cmd_dump {
     my $status = undef;
-    my $db = open_db($db_path, DB_RDONLY);
+    my $db     = open_db($db_path, DB_RDONLY);
     my $cursor = $db->db_cursor();
     while (1) {
-        my $key = '';
+        my $key   = '';
         my $value = '';
         $status = $cursor->c_get($key, $value, DB_NEXT);
         if ($status != 0) {
@@ -196,8 +198,8 @@ sub cmd_restore {
         die "The 'restore' command requires a file path to restore from.\n";
     }
     my $status = undef;
-    my $db    = open_db($db_path, DB_CREATE);
-    my $count = 0;
+    my $db     = open_db($db_path, DB_CREATE);
+    my $count  = 0;
     print "Restoring from '$file_path' to '$db_path'...\n";
     do {
         open my $fh, '<', $file_path
@@ -238,11 +240,11 @@ sub _cmd_restore_proc1 {
 
 # count command
 sub cmd_count {
-    my $db    = open_db($db_path, DB_RDONLY);
-    my $count = 0;
+    my $db     = open_db($db_path, DB_RDONLY);
+    my $count  = 0;
     my $cursor = $db->db_cursor();
-    my $key = '';
-    my $value = '';
+    my $key    = '';
+    my $value  = '';
     while ($cursor->c_get($key, $value, DB_NEXT) == 0) {
         $count++;
     }
@@ -261,7 +263,7 @@ MAIN: {
     GetOptions(
         'help|h'    => \$help,
         'man'       => \$man,
-        'version|v' => \$version,       # Add version option
+        'version|v' => \$version,        # Add version option
         'e=s'       => \$opt_env_path,
         'd=s'       => \$opt_db_path,
     ) or podman(-exitval => 2);
@@ -290,8 +292,9 @@ MAIN: {
     }
     unless (defined $env_home) {
         $env_home = dirname($opt_db_path);
-        $db_path = basename($opt_db_path);
-    } else {
+        $db_path  = basename($opt_db_path);
+    }
+    else {
         $db_path = $opt_db_path;
     }
 
@@ -307,10 +310,12 @@ MAIN: {
         podman(-exitval => 1);
     }
 
-    eval { $command_func->(\@ARGV); };
-    if ($@) {
-        die "An error occurred during command execution: $@";
+    try {
+        $command_func->(\@ARGV);
     }
+    catch {
+        croak("An error occurred during command execution: $_");
+    };
 }
 
 __END__

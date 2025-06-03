@@ -1,31 +1,38 @@
 #!/usr/bin/env perl
 
-use v5.28;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
-use Test::More; # Import the Test::More module for testing
-use File::Temp qw(tempfile tempdir); # For creating temporary files and directories
-use File::Basename; # For basename in cleanup
+use 5.028;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
+use warnings;
+use Test::More;                         # Import the Test::More module for testing
+use File::Temp qw(tempfile tempdir);    # For creating temporary files and directories
+use File::Basename;                     # For basename in cleanup
 
 # --- Test Setup ---
-my ($temp_db_fh, $temp_db_path) = tempfile(UNLINK => 1, SUFFIX => '.db');
-close $temp_db_fh; # Close the filehandle immediately, we just need the path
-my ($temp_backup_fh, $temp_backup_path) = tempfile(UNLINK => 1, SUFFIX => '.txt');
-close $temp_backup_fh; # Close the filehandle immediately
+#my ($temp_db_fh, $temp_db_path) = tempfile(UNLINK => 1, SUFFIX => '.db');
+#close $temp_db_fh;                      # Close the filehandle immediately, we just need the path
+#my ($temp_backup_fh, $temp_backup_path) = tempfile(UNLINK => 1, SUFFIX => '.txt');
+#close $temp_backup_fh;                  # Close the filehandle immediately
+my $temp_dir = tempdir(CLEANUP => 1);
+
+my $temp_db_path     = "$temp_dir/tmp.db";
+my $temp_backup_path = "$temp_dir/tmp.txt";
 
 # Determine the path to the main script
 my $script = File::Basename::dirname(__FILE__) . '/../bin/bdb-tool.pl';
 
 # Ensure the script exists and is executable
--e $script or die "Test script '$script' not found!";
--x $script or die "Test script '$script' is not executable! Please `chmod +x $script`";
+-e $script or die "Test script '$script' not found!\n";
+-x $script or die "Test script '$script' is not executable! Please `chmod +x $script`\n";
 
 # --- Test Plan ---
-plan tests => 15; # Adjust this number based on how many tests you have
+plan tests => 15;    # Adjust this number based on how many tests you have
 
 # --- Helper function to run the main script ---
 sub run_script {
     my (@args) = @_;
+
     # Prepend the database path argument
     unshift @args, '-d', $temp_db_path;
+
     # Execute the script and capture STDOUT and STDERR
     my $output = `$^X $script @args 2>&1`;
     return $output;
@@ -55,7 +62,7 @@ is($count_output, "Number of elements: 1\n", "Count: 1 element after set");
 
 # 6. Test 'set' another key
 run_script('set', 'key2', 'value2');
-my $set_output_2 = run_script('set', 'key2', 'value2'); # Just to ensure it doesn't fail
+my $set_output_2 = run_script('set', 'key2', 'value2');    # Just to ensure it doesn't fail
 is($set_output_2, "Set: key2 => value2\n", "Set: key2=value2");
 
 # 7. Test 'count' command (2 entries)
@@ -76,11 +83,13 @@ is($get_non_exist_output, "key1: (not found)\n", "Get: old key1 returns (not fou
 
 # 11. Test 'dump' command
 my $dump_output = run_script('dump');
+
 # The order might vary, so check for both lines in any order
-ok($dump_output =~ qr/newkey1\tvalue1\n/ && $dump_output =~ qr/key2\tvalue2\n/, "Dump: contains both key-value pairs");
+ok($dump_output =~ qr/newkey1\tvalue1\n/ && $dump_output =~ qr/key2\tvalue2\n/,
+    "Dump: contains both key-value pairs");
 
 # 12. Test 'dump' to file and 'restore' from file
-open my $fh, '>', $temp_backup_path or die "Could not open temporary backup file: $!";
+open my $fh, '>', $temp_backup_path or die "Could not open temporary backup file: $!\n";
 print $fh $dump_output;
 close $fh;
 
@@ -91,7 +100,11 @@ my $count_zero = run_script('count');
 is($count_zero, "Number of elements: 0\n", "Database cleared for restore test");
 
 my $restore_output = run_script('restore', $temp_backup_path);
-like($restore_output, qr/Restoring from '.*\.txt' to '.*\.db'\.\.\.\nRestore complete\. 2 entries restored\.\n/, "Restore: command works and reports 2 entries restored");
+like(
+    $restore_output,
+    qr/Restoring from '.*\.txt' to '.*\.db'\.\.\.\nRestore complete\. 2 entries restored\.\n/,
+    "Restore: command works and reports 2 entries restored"
+);
 
 # 13. Verify restored data
 $count_output = run_script('count');
@@ -106,3 +119,4 @@ is($delete_output, "Deleted: newkey1\n", "Delete: newkey1");
 # unlink $temp_db_path;
 # unlink $temp_backup_path;
 
+# vim: set ts=4 sw=4 sts=0 expandtab:

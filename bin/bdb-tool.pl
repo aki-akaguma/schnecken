@@ -1,9 +1,10 @@
 #!/usr/bin/env perl
 
-use v5.28;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
+use 5.028;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
 use warnings;
 use BerkeleyDB;
 use Getopt::Long;
+use Try::Tiny;
 
 # --- Configuration ---
 my $VERSION = "0.1.0";    # Define the version number here
@@ -24,8 +25,8 @@ my %commands = (
 
 sub podman {
     my (%h) = @_;
-    ## no critic
-    eval "use Pod::Usage 'pod2usage';";
+    ## no critic (BuiltinFunctions::ProhibitStringyEval)
+    my $_r = eval "use Pod::Usage 'pod2usage';";
     ## use critic
     pod2usage(%h);
     return;
@@ -236,10 +237,12 @@ MAIN: {
         podman(-exitval => 1);
     }
 
-    eval { $command_func->(\@ARGV); };
-    if ($@) {
-        die "An error occurred during command execution: $@";
+    try {
+        $command_func->(\@ARGV);
     }
+    catch {
+        croak("An error occurred during command execution: $_");
+    };
 }
 
 __END__
@@ -341,6 +344,6 @@ This program is free software; you can redistribute it and/or modify it under th
 #   v0.1.0  2024/05/24  first release.
 #
 # support on:
-#   perltidy -l 100 --check-syntax --paren-tightness=2
+#   perltidy -b -l 100 --check-syntax --paren-tightness=2
 #   perlcritic -4
 # vim: set ts=4 sw=4 sts=0 expandtab:

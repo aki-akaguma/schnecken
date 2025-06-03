@@ -1,10 +1,11 @@
 #!/usr/bin/env perl
 
-use v5.28;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
+use 5.028;    # Explicitly use Perl 5.28 (enables strict and warnings by default)
 use warnings;
 use BerkeleyDB;
 use Getopt::Long;
 use Fcntl qw(:flock O_RDWR O_CREAT);
+use Try::Tiny;
 
 # --- Configuration ---
 my $VERSION = "0.1.0";    # Define the version number here
@@ -25,8 +26,8 @@ my %commands = (
 
 sub podman {
     my (%h) = @_;
-    ## no critic
-    eval "use Pod::Usage 'pod2usage';";
+    ## no critic (BuiltinFunctions::ProhibitStringyEval)
+    my $_r = eval "use Pod::Usage 'pod2usage';";
     ## use critic
     pod2usage(%h);
     return;
@@ -48,19 +49,20 @@ sub show_version {
 sub open_db {
     my ($path, $flags) = @_;
     ##
-    my $flock;
     my $flock_path = "$path.flock";
-    open($flock, '>>', $flock_path)
-      or die "Cannot open lock file: $flock_path [$!]";
+    ## no critic (InputOutput::RequireBriefOpen)
+    open(my $flock, '>>', $flock_path)
+      or croak("Cannot open lock file: $flock_path [$!]");
+    ## use critic
     flock($flock, LOCK_EX)
-      or die "Cannot get exclusive lock on file: $flock_path [$!]";
+      or croak("Cannot get exclusive lock on file: $flock_path [$!]");
     ##
     my $db;
     my $status = tie %$db, 'BerkeleyDB::Hash',
       -Filename => $path,
       -Flags    => $flags;
     unless ($status) {
-        die "Failed to open database: $path [$!] $BerkeleyDB::Error\n";
+        die("Failed to open database: $path [$!] $BerkeleyDB::Error\n");
     }
     return ($db, $flock);
 }
@@ -245,10 +247,12 @@ MAIN: {
         podman(-exitval => 1);
     }
 
-    eval { $command_func->(\@ARGV); };
-    if ($@) {
-        die "An error occurred during command execution: $@";
+    try {
+        $command_func->(\@ARGV);
     }
+    catch {
+        croak("An error occurred during command execution: $_");
+    };
 }
 
 __END__
@@ -350,6 +354,6 @@ This program is free software; you can redistribute it and/or modify it under th
 #   v0.1.0  2024/05/30  first release.
 #
 # support on:
-#   perltidy -l 100 --check-syntax --paren-tightness=2
+#   perltidy -b -l 100 --check-syntax --paren-tightness=2
 #   perlcritic -4
 # vim: set ts=4 sw=4 sts=0 expandtab:

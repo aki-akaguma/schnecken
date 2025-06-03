@@ -35,5 +35,6 @@ inc/
 /*.zip
 
 ###
+*.bak
 target
 z.*

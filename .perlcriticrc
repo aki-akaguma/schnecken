@@ -1,0 +1,8 @@
+severity = 3
+program-extensions = .pl .t
+
+[-RegularExpressions::RequireExtendedFormatting]
+[-InputOutput::ProhibitBacktickOperators]
+
+[RegularExpressions::ProhibitComplexRegexes]
+max_characters = 100

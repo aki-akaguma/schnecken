@@ -1,0 +1,5 @@
+-i=4
+-l=100
+--check-syntax
+--paren-tightness=2
+--backup-and-modify-in-place

@@ -1,0 +1,13 @@
+[BASIC]
+#module-naming-style=snake_case
+module-naming-style=any
+
+[DESIGN]
+# Maximum number of statements in function / method body.
+max-statements=100
+
+# Maximum number of locals for function / method body.
+max-locals=20
+
+[TYPECHECK]
+ignored-modules =  bsddb3._pybsddb
