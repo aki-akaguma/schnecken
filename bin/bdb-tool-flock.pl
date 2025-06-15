@@ -24,6 +24,20 @@ my %commands = (
     'count'   => \&cmd_count,
 );
 
+# perlcritic settings
+## no critic (RegularExpressions::RequireExtendedFormatting)
+
+##
+# @brief Executes pod2usage with given options.
+#
+# This function is a wrapper around Pod::Usage's pod2usage function,
+# primarily used for displaying help and man pages.It includes a
+# `no critic` directive to allow the use of `eval` for dynamic
+# module loading, which is sometimes necessary for Pod::Usage.
+#
+# @param %h A hash of options to pass to `pod2usage`.
+#
+# @returns void
 sub podman {
     my (%h) = @_;
     ## no critic (BuiltinFunctions::ProhibitStringyEval)
@@ -33,19 +47,45 @@ sub podman {
     return;
 }
 
-# Display help message
+##
+# @brief Displays the help message for the script.
+#
+# This function uses `podman` (which in turn uses `Pod::Usage`)
+# to display the embedded Pod documentation as a help message.
+# The script exits after displaying the help.
+#
+# @returns void
 sub show_help {
     podman(-exitval => 0, -verbose => 2);
     return;
 }
 
-# Display version information
+##
+# @brief Displays the version information of the script.
+#
+# Prints the current version number of the script to standard output
+# and then exits.
+#
+# @returns void
 sub show_version {
     print "bdb-tool.pl version $VERSION\n";
     exit 0;
 }
 
-# Open the database
+##
+# @brief Opens a BerkeleyDB database and acquires a file lock.
+#
+# This function handles the opening of a BerkeleyDB hash database.
+# It also acquires an exclusive file lock on a companion lock file
+# to prevent concurrent access issues.
+#
+# @param $path The file path to the BerkeleyDB database.
+# @param $flags Flags for opening the database (e.g., `DB_RDONLY`, `DB_CREATE`).
+#
+# @returns ($db_tie_object, $flock_filehandle) A tuple containing the tied database
+#          object and the file handle for the acquired lock.
+# @throws Dies if the lock file cannot be opened or locked, or if the database
+#         fails to open.
 sub open_db {
     my ($path, $flags) = @_;
     ##
@@ -69,7 +109,17 @@ sub open_db {
 
 # --- Command Implementations ---
 
-# get command
+##
+# @brief Implements the 'get' command to retrieve a value from the database.
+#
+# Retrieves and prints the value associated with a given key from the
+# BerkeleyDB database. If the key is not found, it indicates so.
+#
+# @param $args_ref A reference to an array containing the key to retrieve.
+#                  Expected: `[ $key ]`.
+#
+# @returns void
+# @throws Dies if the key is not provided.
 sub cmd_get {
     my ($args_ref) = @_;
     my ($key)      = @$args_ref;
@@ -86,7 +136,17 @@ sub cmd_get {
     return;
 }
 
-# set command
+##
+# @brief Implements the 'set' command to store a key-value pair in the database.
+#
+# Sets a specified value for a given key in the BerkeleyDB database.
+# If the key already exists, its value will be updated.
+#
+# @param $args_ref A reference to an array containing the key and value to set.
+#                  Expected: `[ $key, $value ]`.
+#
+# @returns void
+# @throws Dies if either the key or value is not provided.
 sub cmd_set {
     my ($args_ref) = @_;
     my ($key, $value) = @$args_ref;
@@ -99,7 +159,17 @@ sub cmd_set {
     return;
 }
 
-# delete command
+##
+# @brief Implements the 'delete' command to remove a key-value pair from the database.
+#
+# Deletes a specified key and its associated value from the BerkeleyDB database.
+# If the key is not found, it indicates that it could not delete.
+#
+# @param $args_ref A reference to an array containing the key to delete.
+#                  Expected: `[ $key ]`.
+#
+# @returns void
+# @throws Dies if the key is not provided.
 sub cmd_delete {
     my ($args_ref) = @_;
     my ($key)      = @$args_ref;
@@ -117,7 +187,18 @@ sub cmd_delete {
     return;
 }
 
-# rename command
+##
+# @brief Implements the 'rename' command to change a key's name in the database.
+#
+# Renames an existing key to a new key. The value associated with the old key
+# is transferred to the new key.
+#
+# @param $args_ref A reference to an array containing the old key and the new key.
+#                  Expected: `[ $oldkey, $newkey ]`.
+#
+# @returns void
+# @throws Dies if either the old key or new key is not provided, or if the new key
+#         already exists in the database.
 sub cmd_rename {
     my ($args_ref) = @_;
     my ($oldkey, $newkey) = @$args_ref;
@@ -140,7 +221,14 @@ sub cmd_rename {
     return;
 }
 
-# dump command (outputs in key\tvalue format for easier parsing by restore)
+##
+# @brief Implements the 'dump' command to output all key-value pairs from the database.
+#
+# Iterates through all entries in the BerkeleyDB database and prints
+# each key-value pair to standard output, separated by a tab character.
+# This format is suitable for input to the 'restore' command.
+#
+# @returns void
 sub cmd_dump {
     my ($db, $flock) = open_db($db_path, DB_RDONLY);
     while (my ($key, $value) = each %$db) {
@@ -149,7 +237,17 @@ sub cmd_dump {
     return;
 }
 
-# restore command
+##
+# @brief Implements the 'restore' command to load key-value pairs from a file into the database.
+#
+# Reads key-value pairs from a specified file (expected to be tab-separated,
+# as generated by `cmd_dump`) and inserts them into the BerkeleyDB database.
+#
+# @param $args_ref A reference to an array containing the path to the restore file.
+#                  Expected: `[ $file_path ]`.
+#
+# @returns void
+# @throws Dies if the file path is not provided or if the file cannot be opened.
 sub cmd_restore {
     my ($args_ref)  = @_;
     my ($file_path) = @$args_ref;
@@ -169,6 +267,17 @@ sub cmd_restore {
     return;
 }
 
+##
+# @brief Helper function for the 'restore' command to process a file handle.
+#
+# Reads lines from a given file handle, parses them as tab-separated
+# key-value pairs, and inserts them into the provided BerkeleyDB database object.
+# It skips malformed lines and reports them with a warning.
+#
+# @param $db A tied BerkeleyDB hash object where data will be restored.
+# @param $fh A file handle to read the key-value pairs from.
+#
+# @returns The number of entries successfully restored.
 sub _cmd_restore_proc1 {
     my ($db, $fh) = @_;
     my $count = 0;
@@ -191,7 +300,13 @@ sub _cmd_restore_proc1 {
     return $count;
 }
 
-# count command
+##
+# @brief Implements the 'count' command to display the number of entries in the database.
+#
+# Opens the BerkeleyDB database and counts the total number of key-value pairs
+# stored within it.
+#
+# @returns void
 sub cmd_count {
     my ($db, $flock) = open_db($db_path, DB_RDONLY);
     my $count = 0;
@@ -355,5 +470,6 @@ This program is free software; you can redistribute it and/or modify it under th
 #
 # support on:
 #   perltidy -b -l 100 --check-syntax --paren-tightness=2
-#   perlcritic -4
+#   perlcritic -3 --verbose 9
+#
 # vim: set ts=4 sw=4 sts=0 expandtab:
